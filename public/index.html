@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Squad Grid - Lobby</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Socket.io client -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Howler.js for Audio Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
+</head>
+<body>
+    <div id="lobby-screen" class="screen">
+        <h1>SQUAD GRID</h1>
+        <p>Select your team to enter the arena.</p>
+        
+        <div class="team-buttons">
+            <button class="join-btn" data-team="Team A">Join Team A</button>
+            <button class="join-btn" data-team="Team B">Join Team B</button>
+            <button class="join-btn" data-team="Team C">Join Team C</button>
+        </div>
+        
+        <div id="status-message">Waiting to join...</div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
