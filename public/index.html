@@ -10,32 +10,38 @@
 </head>
 <body>
     <!-- Lobby View -->
+    <!-- Lobby View -->
     <div id="lobby-screen" class="screen">
-        <h1 class="title">SQUAD GRID</h1>
-        <p class="subtitle">Select your team to enter the arena</p>
-        
-        <div class="team-buttons">
-            <button class="join-btn" data-team="Team A">Join Team A</button>
-            <button class="join-btn" data-team="Team B">Join Team B</button>
-            <button class="join-btn" data-team="Team C">Join Team C</button>
-        </div>
-        
-        <div id="status-message">Waiting for players...</div>
-        
-        <div class="admin-panel">
-            <button id="start-game-btn" class="admin-btn">Start Game (Admin)</button>
+        <div class="lobby-overlay"></div>
+        <div class="lobby-content">
+            <h1 class="lobby-title">Live The Action On Squad Grid</h1>
+            <p class="lobby-subtitle">Experience the ultimate African sports trivia. Claim your squad's spot in the arena now.</p>
+            
+            <div id="action-bar">
+                <!-- Initial Start Button matching the UI reference -->
+                <button id="start-entry-btn" class="pill-btn primary-pill">
+                    <span>Start</span>
+                    <span class="chevron">>>></span>
+                </button>
+                
+                <!-- Hidden by default until Start is clicked -->
+                <div id="team-selection" class="team-buttons hidden">
+                    <button class="join-btn pill-btn" data-team="Team A">Join Team A</button>
+                    <button class="join-btn pill-btn" data-team="Team B">Join Team B</button>
+                    <button class="join-btn pill-btn" data-team="Team C">Join Team C</button>
+                </div>
+            </div>
+            
+            <div id="status-message" class="hidden" style="margin-top: 15px; font-weight: bold;"></div>
+            
+            <div class="admin-panel" style="margin-top: 25px; position: relative; z-index: 10;">
+                <button id="start-game-btn" class="admin-btn">Start Game (Admin)</button>
+            </div>
         </div>
     </div>
 
     <!-- Active Question Screen -->
     <div id="game-screen" class="screen hidden">
-        <!-- Persistent Score & HUD Bar -->
-        <div class="scoreboard-bar">
-            <div class="score-pill"><span class="team-name">Team A:</span> <span id="score-a">0</span></div>
-            <div class="score-pill"><span class="team-name">Team B:</span> <span id="score-b">0</span></div>
-            <div class="score-pill"><span class="team-name">Team C:</span> <span id="score-c">0</span></div>
-        </div>
-
         <div class="hud">
             <div id="hud-team" class="hud-item">Squad: --</div>
             <div id="hud-timer" class="hud-item timer">10s</div>
@@ -56,8 +62,17 @@
         <div id="lockout-banner" class="lockout-banner hidden">
             Answer Locked by Teammate!
         </div>
+    </div>
 
-        <!-- Dev Control to manually advance questions -->
+    <!-- NEW: Full-Screen Live Standings -->
+    <div id="leaderboard-screen" class="screen hidden">
+        <h1 class="title" style="color: #ffaa00;">LIVE STANDINGS</h1>
+        <p class="subtitle">Who is taking the crown?</p>
+        
+        <div id="rankings-container" class="rankings-box">
+            <!-- Dynamically populated via JS -->
+        </div>
+
         <div class="admin-panel">
             <button id="next-q-btn" class="admin-btn">Next Question (Admin)</button>
         </div>
@@ -74,4 +89,4 @@
 
     <script src="app.js"></script>
 </body>
-</html>
+</html>         
