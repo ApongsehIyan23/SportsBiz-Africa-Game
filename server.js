@@ -14,7 +14,6 @@ app.get('/', (req, res) => {
 });
 
 // Master Question Database
-// Master Question Database
 const masterQuestions = [
     {
         id: "q1",
@@ -177,16 +176,20 @@ let currentQuestion = null;
 let teamAnswers = {}; // { 'Team A': { imageId: '...', timestamp: 12345 } }
 let registeredTeams = new Set(['Team A', 'Team B', 'Team C']);
 let questionTimer = null;
+let questionStartTime = 0; // NEW: Tracks exact moment question is dispatched
+let teamScores = { 'Team A': 0, 'Team B': 0, 'Team C': 0 }; // NEW: Persistent scoring state
 const QUESTION_TIME_LIMIT = 10000; // 10 seconds
 
 function startNewGame() {
     activeQuestionPool = shuffleArray([...masterQuestions]);
+    teamScores = { 'Team A': 0, 'Team B': 0, 'Team C': 0 }; // Reset scores
+    io.emit('updateLeaderboard', teamScores); // Broadcast clean slate
     sendNextQuestion();
 }
 
 function sendNextQuestion() {
     if (activeQuestionPool.length === 0) {
-        io.emit('gameCompleted');
+        io.emit('gameCompleted', teamScores); // Send final scores to resolve Winner/Loser
         return;
     }
 
@@ -201,6 +204,7 @@ function sendNextQuestion() {
         duration: QUESTION_TIME_LIMIT / 1000
     };
 
+    questionStartTime = Date.now(); // Record exact dispatch time for decay math
     io.emit('newQuestion', payload);
     console.log(`Round started: "${currentQuestion.prompt}"`);
 
@@ -216,17 +220,44 @@ function resolveRoundFeedback() {
 
     registeredTeams.forEach(team => {
         const submission = teamAnswers[team];
-        const isCorrect = submission && submission.imageId === currentQuestion.correctImageId;
+        let isCorrect = false;
+        let pointsChange = 0;
+
+        if (submission) {
+            isCorrect = submission.imageId === currentQuestion.correctImageId;
+            
+            if (isCorrect) {
+                // High-Reward Time Decay Math
+                const elapsedMs = submission.timestamp - questionStartTime;
+                const elapsedSeconds = Math.floor(elapsedMs / 1000);
+                const remainingSeconds = Math.max(0, (QUESTION_TIME_LIMIT / 1000) - elapsedSeconds);
+                pointsChange = remainingSeconds * 100; // e.g. 7s remaining = +700 pts
+            } else {
+                // Wrong guess penalty
+                pointsChange = -100;
+            }
+        } else {
+            // No answer submitted, no penalty or reward
+            pointsChange = 0;
+        }
+
+        // Apply to global state
+        if (typeof teamScores[team] === 'undefined') teamScores[team] = 0;
+        teamScores[team] += pointsChange;
 
         const feedbackPayload = {
             isCorrect: Boolean(isCorrect),
             comment: isCorrect ? getRandomItem(goodComments) : getRandomItem(badComments),
             audioFile: isCorrect ? getRandomItem(goodAudioPool) : getRandomItem(badAudioPool),
-            correctAnswerId: currentQuestion.correctImageId
+            correctAnswerId: currentQuestion.correctImageId,
+            pointsChange: pointsChange
         };
 
         io.to(team).emit('roundFeedback', feedbackPayload);
     });
+
+    // Instantly update the scoreboard on all clients
+    io.emit('updateLeaderboard', teamScores);
 }
 
 io.on('connection', (socket) => {
@@ -235,6 +266,8 @@ io.on('connection', (socket) => {
         socket.teamName = teamName;
         registeredTeams.add(teamName);
         socket.emit('joined', { team: teamName });
+        // Send current scores to newly joined clients
+        socket.emit('updateLeaderboard', teamScores);
     });
 
     socket.on('adminStartGame', () => {

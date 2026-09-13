@@ -2,7 +2,7 @@ const socket = io();
 let myTeam = null;
 let currentFeedbackSound = null;
 let timerInterval = null;
-let shuffleInterval = null; // New global to track the shuffle state
+let shuffleInterval = null;
 
 // Howler.js Audio System
 const bgm = new Howl({
@@ -15,6 +15,19 @@ const bgm = new Howl({
 const clickSfx = new Howl({
     src: ['assets/audio/mouse click sound.mp3'],
     volume: 0.8
+});
+
+// NEW: Finale Audio
+const winSfx = new Howl({
+    src: ['assets/audio/winner sound.mp3'],
+    volume: 0.9,
+    html5: true
+});
+
+const loseSfx = new Howl({
+    src: ['assets/audio/looser sound .mp3'], // Exactly matching your file name
+    volume: 0.9,
+    html5: true
 });
 
 // UI Elements
@@ -35,6 +48,7 @@ const feedbackModal = document.getElementById('feedback-modal');
 const feedbackCard = document.getElementById('feedback-card');
 const feedbackBadge = document.getElementById('feedback-badge');
 const feedbackComment = document.getElementById('feedback-comment');
+const feedbackSubtext = document.getElementById('feedback-subtext');
 
 // Team Selection & Audio Unlock
 document.querySelectorAll('.join-btn').forEach(button => {
@@ -63,6 +77,19 @@ if (startGameBtn) {
 if (nextQBtn) {
     nextQBtn.addEventListener('click', () => socket.emit('adminNextQuestion'));
 }
+
+// Leaderboard Updater (Called whenever server updates scores)
+socket.on('updateLeaderboard', (scores) => {
+    if (document.getElementById('score-a') && scores['Team A'] !== undefined) {
+        document.getElementById('score-a').innerText = scores['Team A'];
+    }
+    if (document.getElementById('score-b') && scores['Team B'] !== undefined) {
+        document.getElementById('score-b').innerText = scores['Team B'];
+    }
+    if (document.getElementById('score-c') && scores['Team C'] !== undefined) {
+        document.getElementById('score-c').innerText = scores['Team C'];
+    }
+});
 
 // Handle New Question
 socket.on('newQuestion', (question) => {
@@ -123,7 +150,7 @@ socket.on('newQuestion', (question) => {
 
 // Teammate Lockout
 socket.on('teamLocked', (data) => {
-    clearInterval(shuffleInterval); // Freeze the shuffle when a teammate locks in
+    clearInterval(shuffleInterval);
 
     imageGrid.classList.add('disabled');
     const selectedCard = document.querySelector(`.image-card[data-id="${data.selectedImageId}"]`);
@@ -133,18 +160,16 @@ socket.on('teamLocked', (data) => {
     lockoutBanner.classList.remove('hidden');
 });
 
-// Feedback Event: Cut BGM, Play Meme Audio, Display Modal
+// Feedback Event
 socket.on('roundFeedback', (data) => {
     clearInterval(timerInterval);
-    clearInterval(shuffleInterval); // Ensure the shuffle completely stops at the buzzer
+    clearInterval(shuffleInterval);
 
     hudTimer.innerText = "0s";
     timerProgressFill.style.width = '0%';
 
-    // 1. Instantly pause background music
     bgm.pause();
 
-    // 2. Play the meme audio track
     currentFeedbackSound = new Howl({
         src: [`assets/audio/${data.audioFile}`],
         volume: 0.9,
@@ -152,17 +177,51 @@ socket.on('roundFeedback', (data) => {
     });
     currentFeedbackSound.play();
 
-    // 3. Update Modal UI
     feedbackModal.classList.remove('hidden');
     feedbackCard.className = `modal-card ${data.isCorrect ? 'correct' : 'wrong'}`;
     feedbackBadge.innerText = data.isCorrect ? "CORRECT!" : "WRONG!";
-    feedbackComment.innerText = data.comment;
+    
+    // Inject the points modifier (+900 pts or -100 pts) directly into the comment
+    const pointModifier = data.pointsChange > 0 ? `+${data.pointsChange}` : `${data.pointsChange}`;
+    feedbackComment.innerText = `${data.comment}`;
+    feedbackSubtext.innerText = `Round Score: ${pointModifier} pts`;
 
-    // 4. Highlight correct answer in green on the board
     const correctCard = document.querySelector(`.image-card[data-id="${data.correctAnswerId}"]`);
     if (correctCard) {
         correctCard.classList.add('correct-border');
     }
+});
+
+// Finale Event
+socket.on('gameCompleted', (finalScores) => {
+    // Silence everything
+    bgm.stop();
+    if (currentFeedbackSound && currentFeedbackSound.playing()) {
+        currentFeedbackSound.stop();
+    }
+    clearInterval(timerInterval);
+    clearInterval(shuffleInterval);
+
+    // Determine rankings based on final scores
+    const sortedTeams = Object.keys(finalScores).sort((a, b) => finalScores[b] - finalScores[a]);
+    const myRank = sortedTeams.indexOf(myTeam) + 1;
+    const isWinner = myRank === 1; // Rank #1 Wins
+    const finalPoints = finalScores[myTeam] !== undefined ? finalScores[myTeam] : 0;
+
+    // Trigger Finale Audio
+    if (isWinner) {
+        winSfx.play();
+    } else {
+        loseSfx.play();
+    }
+
+    // Display Finale Modal
+    feedbackModal.classList.remove('hidden');
+    feedbackCard.className = `modal-card ${isWinner ? 'correct' : 'wrong'}`;
+    feedbackBadge.innerText = isWinner ? "CHAMPIONS! 🏆" : "GAME OVER";
+    
+    feedbackComment.innerText = isWinner ? `You won the game with ${finalPoints} pts!` : `You finished Rank #${myRank} with ${finalPoints} pts.`;
+    feedbackSubtext.innerText = "Thanks for playing Squad Grid!";
 });
 
 function startCountdownBar(seconds) {
@@ -189,28 +248,24 @@ function startCountdownBar(seconds) {
     }, stepMs);
 }
 
-// --- NEW SHUFFLE ENGINE ---
 function startGridShuffle() {
     clearInterval(shuffleInterval);
     const cards = document.querySelectorAll('.image-card');
     
     shuffleInterval = setInterval(() => {
-        // Double check to ensure we don't shuffle a locked grid
         if (imageGrid.classList.contains('disabled')) {
             clearInterval(shuffleInterval);
             return;
         }
 
-        // Create an array of grid positions [1, 2, 3, 4] and shuffle them
         let orders = [1, 2, 3, 4];
         for (let i = orders.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [orders[i], orders[j]] = [orders[j], orders[i]];
         }
 
-        // Apply the new CSS order to each card to instantly snap them to new spots
         cards.forEach((card, index) => {
             card.style.order = orders[index];
         });
-    }, 300); // Shuffles every 200ms. You can adjust this to be faster/slower!
+    }, 500); 
 }
