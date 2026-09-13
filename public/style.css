@@ -161,7 +161,6 @@ body {
     to { transform: scale(1); opacity: 1; }
 }
 
-
 /* Persistent Scoreboard Bar */
 .scoreboard-bar {
     display: flex;

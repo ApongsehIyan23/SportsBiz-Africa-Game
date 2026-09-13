@@ -2,13 +2,14 @@ const socket = io();
 let myTeam = null;
 let currentFeedbackSound = null;
 let timerInterval = null;
+let shuffleInterval = null; // New global to track the shuffle state
 
 // Howler.js Audio System
 const bgm = new Howl({
     src: ['assets/audio/bgm.mp3'],
     loop: true,
     volume: 0.15,
-    html5: true // Add this line!
+    html5: true
 });
 
 const clickSfx = new Howl({
@@ -65,7 +66,7 @@ if (nextQBtn) {
 
 // Handle New Question
 socket.on('newQuestion', (question) => {
-    // 1. Audio transitions: stop lingering feedback meme, resume BGM
+    // 1. Audio transitions
     if (currentFeedbackSound && currentFeedbackSound.playing()) {
         currentFeedbackSound.stop();
     }
@@ -102,6 +103,9 @@ socket.on('newQuestion', (question) => {
         card.addEventListener('click', () => {
             if (imageGrid.classList.contains('disabled')) return;
 
+            // Instantly freeze the visual shuffle for the person clicking
+            clearInterval(shuffleInterval);
+            
             // Trigger tap SFX
             clickSfx.play();
 
@@ -112,10 +116,15 @@ socket.on('newQuestion', (question) => {
 
         imageGrid.appendChild(card);
     });
+
+    // 5. Kick off the dynamic visual shuffle mechanic
+    startGridShuffle();
 });
 
 // Teammate Lockout
 socket.on('teamLocked', (data) => {
+    clearInterval(shuffleInterval); // Freeze the shuffle when a teammate locks in
+
     imageGrid.classList.add('disabled');
     const selectedCard = document.querySelector(`.image-card[data-id="${data.selectedImageId}"]`);
     if (selectedCard) {
@@ -127,6 +136,8 @@ socket.on('teamLocked', (data) => {
 // Feedback Event: Cut BGM, Play Meme Audio, Display Modal
 socket.on('roundFeedback', (data) => {
     clearInterval(timerInterval);
+    clearInterval(shuffleInterval); // Ensure the shuffle completely stops at the buzzer
+
     hudTimer.innerText = "0s";
     timerProgressFill.style.width = '0%';
 
@@ -137,7 +148,7 @@ socket.on('roundFeedback', (data) => {
     currentFeedbackSound = new Howl({
         src: [`assets/audio/${data.audioFile}`],
         volume: 0.9,
-        html5: true // Ensures smooth streaming on mobile browsers
+        html5: true
     });
     currentFeedbackSound.play();
 
@@ -176,4 +187,30 @@ function startCountdownBar(seconds) {
             clearInterval(timerInterval);
         }
     }, stepMs);
+}
+
+// --- NEW SHUFFLE ENGINE ---
+function startGridShuffle() {
+    clearInterval(shuffleInterval);
+    const cards = document.querySelectorAll('.image-card');
+    
+    shuffleInterval = setInterval(() => {
+        // Double check to ensure we don't shuffle a locked grid
+        if (imageGrid.classList.contains('disabled')) {
+            clearInterval(shuffleInterval);
+            return;
+        }
+
+        // Create an array of grid positions [1, 2, 3, 4] and shuffle them
+        let orders = [1, 2, 3, 4];
+        for (let i = orders.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [orders[i], orders[j]] = [orders[j], orders[i]];
+        }
+
+        // Apply the new CSS order to each card to instantly snap them to new spots
+        cards.forEach((card, index) => {
+            card.style.order = orders[index];
+        });
+    }, 300); // Shuffles every 200ms. You can adjust this to be faster/slower!
 }
