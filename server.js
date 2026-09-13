@@ -13,17 +13,18 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Master Question Database (10 African Sports & Esports Questions)
+// Master Question Database
+// Master Question Database
 const masterQuestions = [
     {
         id: "q1",
         prompt: "Who scored the winning penalty for Senegal to claim their first AFCON title in 2021?",
         correctImageId: "q1_mane",
         images: [
-            { id: "q1_mane", src: "q1_mane.jpg" },
+            { id: "q1_mane", src: "q1_mane.avif" },
             { id: "q1_salah", src: "q1_salah.webp" },
             { id: "q1_koulibaly", src: "q1_koulibaly.jpg" },
-            { id: "q1_mendy", src: "q1_mendy.avif" }
+            { id: "q1_mendy", src: "q1_mendy.jpg" }
         ]
     },
     {
@@ -42,7 +43,7 @@ const masterQuestions = [
         prompt: "Which Nigerian legend was drafted #1 overall in the 1984 NBA Draft and won two titles with Houston?",
         correctImageId: "q3_olajuwon",
         images: [
-            { id: "q3_olajuwon", src: "q3_Olajuwon.webp" },
+            { id: "q3_olajuwon", src: "q3_olajuwon.webp" },
             { id: "q3_mutombo", src: "q3_mutombo.webp" },
             { id: "q3_bol", src: "q3_bol.jpg" },
             { id: "q3_jordan", src: "q3_jordan.webp" }
@@ -64,9 +65,9 @@ const masterQuestions = [
         prompt: "Which Cameroonian basketball superstar was named NBA MVP for the 2022-2023 season?",
         correctImageId: "q5_embiid",
         images: [
-            { id: "q5_embiid", src: "q5_embiid.jpg" },
+            { id: "q5_embiid", src: "q5_embid.jpg" },
             { id: "q5_siakam", src: "q5_siakam.jpg" },
-            { id: "q5_giannis", src: "q5_antekokounmpo.webp" },
+            { id: "q5_giannis", src: "q5_antetokounmpo.webp" },
             { id: "q5_wemby", src: "q5_wembanyama.webp" }
         ]
     },
@@ -127,7 +128,41 @@ const masterQuestions = [
     }
 ];
 
-// Helper: In-place array shuffle
+// Meme Audio Pools
+const goodAudioPool = [
+    'correct sound1.mp3',
+    'golazo.mp3',
+    'correct sound 2.mp3',
+    'correct sound 3.mp3',
+    'correct sound 4.mp3'
+];
+
+const badAudioPool = [
+    'wrong sound 1.mp3',
+    'wrong sound 2.mp3',
+    'wrong sound 3.mp3',
+    'wrong sound 4.mp3',
+    'wrong sound 5.mp3'
+];
+
+const goodComments = [
+    "GOLAZOOOOO! Clean strike!",
+    "BALL KNOWLEDGE OVERLOAD! 🧠🔥",
+    "Top bins! No keeper is stopping that!",
+    "Pure class! Tekkers on display!"
+];
+
+const badComments = [
+    "VAR checked... NO GOAL! ❌",
+    "Straight into row Z! What was that?",
+    "Sent to the stands! Complete disaster!",
+    "Offside and out of bounds! Try again!"
+];
+
+function getRandomItem(array) {
+    return array[Math.floor(Math.random() * array.length)];
+}
+
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -139,47 +174,69 @@ function shuffleArray(array) {
 // Active Match State
 let activeQuestionPool = [];
 let currentQuestion = null;
-let roundLockedTeams = new Set(); // Tracks teams that already answered this question
+let teamAnswers = {}; // { 'Team A': { imageId: '...', timestamp: 12345 } }
+let registeredTeams = new Set(['Team A', 'Team B', 'Team C']);
+let questionTimer = null;
+const QUESTION_TIME_LIMIT = 10000; // 10 seconds
 
 function startNewGame() {
     activeQuestionPool = shuffleArray([...masterQuestions]);
-    console.log(`New game initialized with ${activeQuestionPool.length} randomized questions.`);
     sendNextQuestion();
 }
 
 function sendNextQuestion() {
     if (activeQuestionPool.length === 0) {
-        console.log("All questions completed!");
         io.emit('gameCompleted');
         return;
     }
 
-    roundLockedTeams.clear();
+    teamAnswers = {};
     currentQuestion = activeQuestionPool.pop();
-
-    // Shuffle the 4 images so the correct one is never in a fixed position
     const shuffledImages = shuffleArray([...currentQuestion.images]);
 
-    // Omit `correctImageId` from the client broadcast to prevent DOM inspection cheating
     const payload = {
         id: currentQuestion.id,
         prompt: currentQuestion.prompt,
-        images: shuffledImages
+        images: shuffledImages,
+        duration: QUESTION_TIME_LIMIT / 1000
     };
 
     io.emit('newQuestion', payload);
-    console.log(`Dispatched Question: ${payload.id} - "${payload.prompt}"`);
+    console.log(`Round started: "${currentQuestion.prompt}"`);
+
+    // 10-Second Server Authority Timer
+    clearTimeout(questionTimer);
+    questionTimer = setTimeout(() => {
+        resolveRoundFeedback();
+    }, QUESTION_TIME_LIMIT);
+}
+
+function resolveRoundFeedback() {
+    console.log("10s expired. Resolving round feedback...");
+
+    registeredTeams.forEach(team => {
+        const submission = teamAnswers[team];
+        const isCorrect = submission && submission.imageId === currentQuestion.correctImageId;
+
+        const feedbackPayload = {
+            isCorrect: Boolean(isCorrect),
+            comment: isCorrect ? getRandomItem(goodComments) : getRandomItem(badComments),
+            audioFile: isCorrect ? getRandomItem(goodAudioPool) : getRandomItem(badAudioPool),
+            correctAnswerId: currentQuestion.correctImageId
+        };
+
+        io.to(team).emit('roundFeedback', feedbackPayload);
+    });
 }
 
 io.on('connection', (socket) => {
     socket.on('joinTeam', (teamName) => {
         socket.join(teamName);
         socket.teamName = teamName;
-        console.log(`Socket ${socket.id} joined ${teamName}`);
+        registeredTeams.add(teamName);
         socket.emit('joined', { team: teamName });
     });
 
-    // Admin trigger to launch the match or advance questions during testing
     socket.on('adminStartGame', () => {
         startNewGame();
     });
@@ -188,29 +245,20 @@ io.on('connection', (socket) => {
         sendNextQuestion();
     });
 
-    // First-Responder Answer Lockout
     socket.on('submitAnswer', (data) => {
         const team = socket.teamName;
         if (!team) return;
 
-        // Check if the squad has already submitted an answer for this question
-        if (roundLockedTeams.has(team)) {
-            console.log(`Ignored duplicate answer from ${socket.id} (${team})`);
-            return;
-        }
+        // First-Responder check
+        if (teamAnswers[team]) return;
 
-        // Lock the squad immediately
-        roundLockedTeams.add(team);
-        console.log(`[FIRST-RESPONDER] ${team} locked answer: ${data.selectedImageId}`);
+        teamAnswers[team] = {
+            imageId: data.selectedImageId,
+            timestamp: Date.now()
+        };
 
-        // Broadcast lockout state specifically to this team's room
-        io.to(team).emit('teamLocked', {
-            selectedImageId: data.selectedImageId
-        });
-    });
-
-    socket.on('disconnect', () => {
-        console.log(`Client disconnected: ${socket.id}`);
+        console.log(`[LOCKED] ${team} selected ${data.selectedImageId}`);
+        io.to(team).emit('teamLocked', { selectedImageId: data.selectedImageId });
     });
 });
 

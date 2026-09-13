@@ -22,7 +22,6 @@
         
         <div id="status-message">Waiting for players...</div>
         
-        <!-- Dev/Admin Launch Controls -->
         <div class="admin-panel">
             <button id="start-game-btn" class="admin-btn">Start Game (Admin)</button>
         </div>
@@ -30,9 +29,20 @@
 
     <!-- Active Question Screen -->
     <div id="game-screen" class="screen hidden">
+        <!-- Persistent Score & HUD Bar -->
+        <div class="scoreboard-bar">
+            <div class="score-pill"><span class="team-name">Team A:</span> <span id="score-a">0</span></div>
+            <div class="score-pill"><span class="team-name">Team B:</span> <span id="score-b">0</span></div>
+            <div class="score-pill"><span class="team-name">Team C:</span> <span id="score-c">0</span></div>
+        </div>
+
         <div class="hud">
             <div id="hud-team" class="hud-item">Squad: --</div>
-            <div id="hud-status" class="hud-item">Choose fast!</div>
+            <div id="hud-timer" class="hud-item timer">10s</div>
+        </div>
+
+        <div class="timer-progress-track">
+            <div id="timer-progress-fill" class="timer-progress-fill"></div>
         </div>
 
         <div id="question-box">
@@ -40,11 +50,25 @@
         </div>
 
         <div id="image-grid" class="image-grid">
-            <!-- 4 player photos injected dynamically -->
+            <!-- Dynamic 4 images -->
         </div>
 
         <div id="lockout-banner" class="lockout-banner hidden">
             Answer Locked by Teammate!
+        </div>
+
+        <!-- Dev Control to manually advance questions -->
+        <div class="admin-panel">
+            <button id="next-q-btn" class="admin-btn">Next Question (Admin)</button>
+        </div>
+    </div>
+
+    <!-- Feedback Pop-up Overlay -->
+    <div id="feedback-modal" class="modal-backdrop hidden">
+        <div id="feedback-card" class="modal-card">
+            <div id="feedback-badge" class="badge">CORRECT!</div>
+            <h3 id="feedback-comment">Comment here</h3>
+            <p id="feedback-subtext">Next play incoming...</p>
         </div>
     </div>
 

@@ -1,11 +1,19 @@
 const socket = io();
 let myTeam = null;
+let currentFeedbackSound = null;
+let timerInterval = null;
 
-// Audio setup
+// Howler.js Audio System
 const bgm = new Howl({
-    src: ['assets/bgm.mp3'],
+    src: ['assets/audio/bgm.mp3'],
     loop: true,
-    volume: 0.15
+    volume: 0.15,
+    html5: true // Add this line!
+});
+
+const clickSfx = new Howl({
+    src: ['assets/audio/mouse click sound.mp3'],
+    volume: 0.8
 });
 
 // UI Elements
@@ -13,13 +21,21 @@ const lobbyScreen = document.getElementById('lobby-screen');
 const gameScreen = document.getElementById('game-screen');
 const statusMessage = document.getElementById('status-message');
 const hudTeam = document.getElementById('hud-team');
-const hudStatus = document.getElementById('hud-status');
+const hudTimer = document.getElementById('hud-timer');
+const timerProgressFill = document.getElementById('timer-progress-fill');
 const questionText = document.getElementById('question-text');
 const imageGrid = document.getElementById('image-grid');
 const lockoutBanner = document.getElementById('lockout-banner');
 const startGameBtn = document.getElementById('start-game-btn');
+const nextQBtn = document.getElementById('next-q-btn');
 
-// Team Selection
+// Feedback Modal Elements
+const feedbackModal = document.getElementById('feedback-modal');
+const feedbackCard = document.getElementById('feedback-card');
+const feedbackBadge = document.getElementById('feedback-badge');
+const feedbackComment = document.getElementById('feedback-comment');
+
+// Team Selection & Audio Unlock
 document.querySelectorAll('.join-btn').forEach(button => {
     button.addEventListener('click', (e) => {
         myTeam = e.target.getAttribute('data-team');
@@ -39,29 +55,39 @@ document.querySelectorAll('.join-btn').forEach(button => {
     });
 });
 
-// Admin start button
 if (startGameBtn) {
-    startGameBtn.addEventListener('click', () => {
-        socket.emit('adminStartGame');
-    });
+    startGameBtn.addEventListener('click', () => socket.emit('adminStartGame'));
 }
 
-// Receive new question from server
+if (nextQBtn) {
+    nextQBtn.addEventListener('click', () => socket.emit('adminNextQuestion'));
+}
+
+// Handle New Question
 socket.on('newQuestion', (question) => {
-    // Transition to game screen
+    // 1. Audio transitions: stop lingering feedback meme, resume BGM
+    if (currentFeedbackSound && currentFeedbackSound.playing()) {
+        currentFeedbackSound.stop();
+    }
+    if (!bgm.playing()) {
+        bgm.play();
+    }
+
+    // 2. Clear previous popups and views
+    feedbackModal.classList.add('hidden');
     lobbyScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
 
     hudTeam.innerText = `Squad: ${myTeam || 'Spectator'}`;
-    hudStatus.innerText = 'TAP YOUR ANSWER!';
-    hudStatus.style.color = '#ffffff';
     lockoutBanner.classList.add('hidden');
-
     questionText.innerText = question.prompt;
     imageGrid.innerHTML = '';
     imageGrid.classList.remove('disabled');
 
-    // Render the 4 shuffled player photos
+    // 3. Client countdown bar animation
+    startCountdownBar(question.duration || 10);
+
+    // 4. Render options
     question.images.forEach(img => {
         const card = document.createElement('div');
         card.className = 'image-card';
@@ -76,7 +102,9 @@ socket.on('newQuestion', (question) => {
         card.addEventListener('click', () => {
             if (imageGrid.classList.contains('disabled')) return;
 
-            // Immediately send answer for this team
+            // Trigger tap SFX
+            clickSfx.play();
+
             socket.emit('submitAnswer', {
                 selectedImageId: img.id
             });
@@ -86,18 +114,66 @@ socket.on('newQuestion', (question) => {
     });
 });
 
-// First-Responder Lockout Event (Received by all teammates in this room)
+// Teammate Lockout
 socket.on('teamLocked', (data) => {
-    // Disable all 4 images on screen
     imageGrid.classList.add('disabled');
-
-    // Highlight the chosen card
     const selectedCard = document.querySelector(`.image-card[data-id="${data.selectedImageId}"]`);
     if (selectedCard) {
         selectedCard.classList.add('selected');
     }
-
     lockoutBanner.classList.remove('hidden');
-    hudStatus.innerText = 'LOCKED IN!';
-    hudStatus.style.color = '#ffaa00';
 });
+
+// Feedback Event: Cut BGM, Play Meme Audio, Display Modal
+socket.on('roundFeedback', (data) => {
+    clearInterval(timerInterval);
+    hudTimer.innerText = "0s";
+    timerProgressFill.style.width = '0%';
+
+    // 1. Instantly pause background music
+    bgm.pause();
+
+    // 2. Play the meme audio track
+    currentFeedbackSound = new Howl({
+        src: [`assets/audio/${data.audioFile}`],
+        volume: 0.9,
+        html5: true // Ensures smooth streaming on mobile browsers
+    });
+    currentFeedbackSound.play();
+
+    // 3. Update Modal UI
+    feedbackModal.classList.remove('hidden');
+    feedbackCard.className = `modal-card ${data.isCorrect ? 'correct' : 'wrong'}`;
+    feedbackBadge.innerText = data.isCorrect ? "CORRECT!" : "WRONG!";
+    feedbackComment.innerText = data.comment;
+
+    // 4. Highlight correct answer in green on the board
+    const correctCard = document.querySelector(`.image-card[data-id="${data.correctAnswerId}"]`);
+    if (correctCard) {
+        correctCard.classList.add('correct-border');
+    }
+});
+
+function startCountdownBar(seconds) {
+    clearInterval(timerInterval);
+    let remaining = seconds;
+    hudTimer.innerText = `${remaining}s`;
+    timerProgressFill.style.width = '100%';
+
+    const stepMs = 100;
+    const totalMs = seconds * 1000;
+    let elapsedMs = 0;
+
+    timerInterval = setInterval(() => {
+        elapsedMs += stepMs;
+        const fraction = Math.max(0, 1 - (elapsedMs / totalMs));
+        timerProgressFill.style.width = `${fraction * 100}%`;
+
+        const secLeft = Math.ceil((totalMs - elapsedMs) / 1000);
+        hudTimer.innerText = `${Math.max(0, secLeft)}s`;
+
+        if (elapsedMs >= totalMs) {
+            clearInterval(timerInterval);
+        }
+    }, stepMs);
+}
